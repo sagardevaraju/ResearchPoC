@@ -1,0 +1,38 @@
+[
+  {
+    "supplier_id": "SUP-CHN-001",
+    "on_time_rate": 0.62,
+    "avg_delay_days": 4.8,
+    "last_quarter_score": 72
+  },
+  {
+    "supplier_id": "SUP-CHN-002",
+    "on_time_rate": 0.58,
+    "avg_delay_days": 6.2,
+    "last_quarter_score": 69
+  },
+  {
+    "supplier_id": "SUP-VNM-001",
+    "on_time_rate": 0.84,
+    "avg_delay_days": 1.6,
+    "last_quarter_score": 85
+  },
+  {
+    "supplier_id": "SUP-MEX-001",
+    "on_time_rate": 0.79,
+    "avg_delay_days": 2.3,
+    "last_quarter_score": 82
+  },
+  {
+    "supplier_id": "SUP-IND-001",
+    "on_time_rate": 0.77,
+    "avg_delay_days": 2.8,
+    "last_quarter_score": 80
+  },
+  {
+    "supplier_id": "SUP-MYS-001",
+    "on_time_rate": 0.81,
+    "avg_delay_days": 2.1,
+    "last_quarter_score": 83
+  }
+]

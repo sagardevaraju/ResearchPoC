@@ -1,0 +1,22 @@
+[
+  {
+    "id": "news-001",
+    "headline": "US announces expanded trade block on select China-origin electronics",
+    "region": "US-China",
+    "impact": "tariff/block",
+    "severity": 0.9,
+    "affected_countries": ["China"],
+    "summary": "New restrictions increase tariffs and limit imports of specific electronics and components from China.",
+    "timestamp": "2025-02-10T08:30:00Z"
+  },
+  {
+    "id": "news-002",
+    "headline": "Red Sea disruptions continue to divert container traffic",
+    "region": "Middle East",
+    "impact": "route disruption",
+    "severity": 0.7,
+    "affected_countries": ["Egypt", "Yemen", "Saudi Arabia"],
+    "summary": "Ongoing security risks force carriers to reroute around the Cape, increasing lead times.",
+    "timestamp": "2025-02-09T14:10:00Z"
+  }
+]

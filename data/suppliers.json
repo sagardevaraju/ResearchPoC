@@ -1,0 +1,50 @@
+[
+  {
+    "supplier_id": "SUP-CHN-001",
+    "name": "Shenzhen Optix Components",
+    "country": "China",
+    "category": "electronics",
+    "lead_time_days": 32,
+    "performance_score": 0.78
+  },
+  {
+    "supplier_id": "SUP-CHN-002",
+    "name": "Guangzhou Circuit Works",
+    "country": "China",
+    "category": "electronics",
+    "lead_time_days": 28,
+    "performance_score": 0.74
+  },
+  {
+    "supplier_id": "SUP-VNM-001",
+    "name": "Saigon Micro Assembly",
+    "country": "Vietnam",
+    "category": "electronics",
+    "lead_time_days": 35,
+    "performance_score": 0.86
+  },
+  {
+    "supplier_id": "SUP-MEX-001",
+    "name": "Monterrey Digital Manufacturing",
+    "country": "Mexico",
+    "category": "electronics",
+    "lead_time_days": 22,
+    "performance_score": 0.83
+  },
+  {
+    "supplier_id": "SUP-IND-001",
+    "name": "Bangalore Precision Devices",
+    "country": "India",
+    "category": "electronics",
+    "lead_time_days": 30,
+    "performance_score": 0.81
+  },
+  {
+    "supplier_id": "SUP-MYS-001",
+    "name": "Penang Sensor Systems",
+    "country": "Malaysia",
+    "category": "electronics",
+    "lead_time_days": 27,
+    "performance_score": 0.84
+  }
+]
