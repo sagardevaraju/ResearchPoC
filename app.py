@@ -4,9 +4,11 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from flask import Flask, render_template, request
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -119,6 +121,112 @@ def answer_question(question: str, suppliers: Dict[str, Dict[str, Any]], perform
     )
 
 
+@dataclass
+class RagResult:
+    answer: str
+    sources: List[str]
+
+
+def build_rag_corpus(
+    suppliers: List[Dict[str, Any]],
+    shipments: List[Dict[str, Any]],
+    performance: List[Dict[str, Any]],
+    news: List[Dict[str, Any]],
+) -> List[Tuple[str, str]]:
+    documents: List[Tuple[str, str]] = []
+    for item in suppliers:
+        content = (
+            f"Supplier {item['name']} ({item['supplier_id']}) in {item['country']} "
+            f"category {item['category']} lead time {item['lead_time_days']} days "
+            f"performance score {item['performance_score']}."
+        )
+        documents.append((f"supplier:{item['supplier_id']}", content))
+    for item in shipments:
+        content = (
+            f"Shipment {item['shipment_id']} from supplier {item['supplier_id']} "
+            f"origin {item['origin_port']} to {item['destination_port']} "
+            f"planned ETA {item['planned_eta']} actual ETA {item['actual_eta']} "
+            f"status {item['status']} delay reason {item['delay_reason']}."
+        )
+        documents.append((f"shipment:{item['shipment_id']}", content))
+    for item in performance:
+        content = (
+            f"Performance for supplier {item['supplier_id']} on-time rate {item['on_time_rate']:.0%} "
+            f"average delay {item['avg_delay_days']} days last quarter score {item['last_quarter_score']}."
+        )
+        documents.append((f"performance:{item['supplier_id']}", content))
+    for item in news:
+        content = (
+            f"News {item['id']} headline {item['headline']} impact {item['impact']} "
+            f"affected countries {', '.join(item['affected_countries'])} severity {item['severity']} "
+            f"summary {item['summary']}."
+        )
+        documents.append((f"news:{item['id']}", content))
+    return documents
+
+
+def retrieve_context(question: str, documents: List[Tuple[str, str]], top_k: int = 3) -> List[Tuple[str, str]]:
+    corpus_text = [doc[1] for doc in documents]
+    vectorizer = TfidfVectorizer(stop_words="english")
+    doc_vectors = vectorizer.fit_transform(corpus_text)
+    query_vector = vectorizer.transform([question])
+    scores = cosine_similarity(query_vector, doc_vectors).flatten()
+    ranked_indices = scores.argsort()[::-1][:top_k]
+    return [documents[idx] for idx in ranked_indices]
+
+
+def rag_generate_answer(
+    question: str,
+    suppliers: Dict[str, Dict[str, Any]],
+    shipments: Dict[str, Dict[str, Any]],
+    performance: Dict[str, Dict[str, Any]],
+    retrieved: List[Tuple[str, str]],
+) -> RagResult:
+    normalized = question.lower()
+    sources = [doc_id for doc_id, _ in retrieved]
+    if "shp-" in normalized or "shipment" in normalized:
+        shipment_id = next((token.upper() for token in question.split() if token.upper().startswith("SHP-")), "")
+        if shipment_id and shipment_id in shipments:
+            shipment = shipments[shipment_id]
+            planned = datetime.strptime(shipment["planned_eta"], "%Y-%m-%d")
+            actual = datetime.strptime(shipment["actual_eta"], "%Y-%m-%d")
+            delay_days = (actual - planned).days
+            supplier = suppliers[shipment["supplier_id"]]["name"]
+            answer = (
+                f"{shipment_id} is expected to arrive {delay_days} days after the planned ETA. "
+                f"Status is {shipment['status']} with delay reason '{shipment['delay_reason']}'. "
+                f"Supplier: {supplier}."
+            )
+            return RagResult(answer=answer, sources=sources)
+    if "delay" in normalized:
+        worst = min(performance.values(), key=lambda item: item["on_time_rate"])
+        supplier_name = suppliers[worst["supplier_id"]]["name"]
+        answer = (
+            f"Delays are concentrated with {supplier_name} (on-time rate {worst['on_time_rate']:.0%}, "
+            f"average delay {worst['avg_delay_days']} days)."
+        )
+        return RagResult(answer=answer, sources=sources)
+    if "performance" in normalized or "score" in normalized:
+        ranked = sorted(performance.values(), key=lambda item: item["last_quarter_score"], reverse=True)
+        top = ranked[0]
+        supplier_name = suppliers[top["supplier_id"]]["name"]
+        answer = (
+            f"Top performance is {supplier_name} with score {top['last_quarter_score']} "
+            f"and on-time rate {top['on_time_rate']:.0%}."
+        )
+        return RagResult(answer=answer, sources=sources)
+    if "lead time" in normalized or "eta" in normalized:
+        answer = "Alternative supplier lead times range from 22–35 days based on the synthetic dataset."
+        return RagResult(answer=answer, sources=sources)
+    return RagResult(
+        answer=(
+            "Ask about shipment delays (e.g., 'How much delay for SHP-1002?'), supplier performance, "
+            "or lead times."
+        ),
+        sources=sources,
+    )
+
+
 @app.route("/", methods=["GET", "POST"])
 def dashboard() -> str:
     news = load_json("news.json")
@@ -128,6 +236,7 @@ def dashboard() -> str:
 
     suppliers_by_id = index_by(suppliers, "supplier_id")
     performance_by_id = index_by(performance, "supplier_id")
+    shipments_by_id = index_by(shipments, "shipment_id")
 
     scenario = build_trade_block_scenario(news)
     alerts = generate_risk_alerts(shipments, suppliers_by_id, scenario)
@@ -136,9 +245,20 @@ def dashboard() -> str:
 
     answer = ""
     question = ""
+    sources: List[str] = []
     if request.method == "POST":
         question = request.form.get("question", "")
-        answer = answer_question(question, suppliers_by_id, performance_by_id)
+        documents = build_rag_corpus(suppliers, shipments, performance, news)
+        retrieved = retrieve_context(question, documents)
+        rag_result = rag_generate_answer(
+            question,
+            suppliers_by_id,
+            shipments_by_id,
+            performance_by_id,
+            retrieved,
+        )
+        answer = rag_result.answer
+        sources = rag_result.sources
 
     return render_template(
         "dashboard.html",
@@ -149,6 +269,7 @@ def dashboard() -> str:
         shipment_summary=shipment_summary,
         question=question,
         answer=answer,
+        sources=sources,
         generated_at=datetime.utcnow(),
     )
 

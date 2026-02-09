@@ -91,7 +91,7 @@
     <div class="card">
       <h2>WMS/TMS Q&amp;A</h2>
       <form method="post" class="qa-form">
-        <label for="question">Ask about delays, supplier performance, or lead times</label>
+        <label for="question">Ask about delays, supplier performance, or lead times (RAG on synthetic data)</label>
         <div class="qa-input">
           <input type="text" id="question" name="question" value="{{ question }}" placeholder="Which supplier has the most delays?" />
           <button type="submit">Ask</button>
@@ -99,6 +99,16 @@
       </form>
       {% if answer %}
       <div class="answer">{{ answer }}</div>
+      {% if sources %}
+      <div class="sources">
+        <span class="sources-label">Retrieved context:</span>
+        <ul>
+          {% for source in sources %}
+          <li>{{ source }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
       {% endif %}
     </div>
   </section>

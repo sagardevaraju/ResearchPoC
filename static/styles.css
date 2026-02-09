@@ -169,3 +169,23 @@ body {
   border-radius: 12px;
   color: #0f172a;
 }
+
+.sources {
+  margin-top: 12px;
+  background: #f8fafc;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.sources-label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.sources ul {
+  padding-left: 16px;
+  margin: 0;
+}

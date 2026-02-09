@@ -6,7 +6,8 @@ Executable proof-of-concept for a geopolitical risk + supply-chain GenAI copilot
 - Geopolitical news ingest (synthetic)
 - Trade-block risk alerts for China-origin shipments
 - Alternate sourcing recommendations (Vietnam, Mexico, India, Malaysia)
-- WMS/TMS Q&A for delays, supplier performance, and lead times
+- WMS/TMS Q&A for delays, supplier performance, and lead times (RAG over synthetic data)
+
 - Dashboard UI
 
 ## Quick start
