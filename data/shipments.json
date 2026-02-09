@@ -1,0 +1,46 @@
+[
+  {
+    "shipment_id": "SHP-1001",
+    "supplier_id": "SUP-CHN-001",
+    "sku": "ELEC-AX12",
+    "origin_port": "Shanghai",
+    "destination_port": "Los Angeles",
+    "planned_eta": "2025-02-18",
+    "actual_eta": "2025-02-23",
+    "status": "Delayed",
+    "delay_reason": "Customs hold"
+  },
+  {
+    "shipment_id": "SHP-1002",
+    "supplier_id": "SUP-CHN-002",
+    "sku": "ELEC-BX09",
+    "origin_port": "Shenzhen",
+    "destination_port": "Seattle",
+    "planned_eta": "2025-02-20",
+    "actual_eta": "2025-02-26",
+    "status": "Delayed",
+    "delay_reason": "Tariff inspection"
+  },
+  {
+    "shipment_id": "SHP-1003",
+    "supplier_id": "SUP-VNM-001",
+    "sku": "ELEC-CX02",
+    "origin_port": "Ho Chi Minh",
+    "destination_port": "Oakland",
+    "planned_eta": "2025-02-19",
+    "actual_eta": "2025-02-19",
+    "status": "On Time",
+    "delay_reason": ""
+  },
+  {
+    "shipment_id": "SHP-1004",
+    "supplier_id": "SUP-MEX-001",
+    "sku": "ELEC-DX11",
+    "origin_port": "Manzanillo",
+    "destination_port": "Houston",
+    "planned_eta": "2025-02-15",
+    "actual_eta": "2025-02-16",
+    "status": "Minor Delay",
+    "delay_reason": "Port congestion"
+  }
+]

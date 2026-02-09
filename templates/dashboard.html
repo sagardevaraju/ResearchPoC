@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GeoSupply Copilot Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>GeoSupply Copilot</h1>
+      <p>Prototype dashboard for geopolitical risk + WMS/TMS intelligence</p>
+    </div>
+    <div class="timestamp">Updated {{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+  </header>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Trade Block Scenario</h2>
+      <p class="headline">{{ scenario.title }}</p>
+      <p>{{ scenario.summary }}</p>
+      <div class="tag-row">
+        <span class="tag">Severity {{ scenario.severity }}</span>
+        {% for country in scenario.affected_countries %}
+        <span class="tag danger">{{ country }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Shipment Health</h2>
+      <div class="metric-row">
+        <div>
+          <span class="metric">{{ shipment_summary.total }}</span>
+          <span class="metric-label">Total Shipments</span>
+        </div>
+        <div>
+          <span class="metric">{{ shipment_summary.delayed }}</span>
+          <span class="metric-label">Delayed</span>
+        </div>
+        <div>
+          <span class="metric">{{ (shipment_summary.delay_rate * 100) | round(0) }}%</span>
+          <span class="metric-label">Delay Rate</span>
+        </div>
+      </div>
+      <ul class="list">
+        {% for shipment in shipments %}
+        <li>
+          <strong>{{ shipment.shipment_id }}</strong> · {{ shipment.origin_port }} → {{ shipment.destination_port }}
+          <span class="status">{{ shipment.status }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Risk Alerts</h2>
+      {% if alerts %}
+      <ul class="list">
+        {% for alert in alerts %}
+        <li>
+          <strong>{{ alert.shipment_id }}</strong> · {{ alert.supplier }}
+          <div class="subtext">Origin: {{ alert.origin_country }} · {{ alert.risk_reason }}</div>
+          <span class="badge">Severity {{ alert.severity }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p>No high-risk alerts for the current scenario.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Alternate Sourcing Suggestions</h2>
+      <p>Recommended suppliers to replace China-origin electronics.</p>
+      <ul class="list">
+        {% for supplier in alternatives %}
+        <li>
+          <strong>{{ supplier.name }}</strong> ({{ supplier.country }})
+          <div class="subtext">Lead time {{ supplier.lead_time_days }} days · Performance {{ supplier.performance_score }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>WMS/TMS Q&amp;A</h2>
+      <form method="post" class="qa-form">
+        <label for="question">Ask about delays, supplier performance, or lead times</label>
+        <div class="qa-input">
+          <input type="text" id="question" name="question" value="{{ question }}" placeholder="Which supplier has the most delays?" />
+          <button type="submit">Ask</button>
+        </div>
+      </form>
+      {% if answer %}
+      <div class="answer">{{ answer }}</div>
+      {% endif %}
+    </div>
+  </section>
+</body>
+</html>
