@@ -189,3 +189,38 @@ body {
   padding-left: 16px;
   margin: 0;
 }
+
+.inline-link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.inline-link:hover {
+  text-decoration: underline;
+}
+
+.detail-panel {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 14px;
+  color: #0f172a;
+}
+
+.detail-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}

@@ -20,6 +20,11 @@
       <h2>Trade Block Scenario</h2>
       <p class="headline">{{ scenario.title }}</p>
       <p>{{ scenario.summary }}</p>
+      {% if scenario.source_url %}
+      <p class="subtext">
+        Source: <a class="inline-link" href="{{ scenario.source_url }}" target="_blank" rel="noopener">{{ scenario.source_url }}</a>
+      </p>
+      {% endif %}
       <div class="tag-row">
         <span class="tag">Severity {{ scenario.severity }}</span>
         {% for country in scenario.affected_countries %}
@@ -47,7 +52,10 @@
       <ul class="list">
         {% for shipment in shipments %}
         <li>
-          <strong>{{ shipment.shipment_id }}</strong> · {{ shipment.origin_port }} → {{ shipment.destination_port }}
+          <strong>
+            <a class="inline-link" href="#shipment-details" data-shipment-id="{{ shipment.shipment_id }}">{{ shipment.shipment_id }}</a>
+          </strong>
+          · {{ shipment.origin_port }} → {{ shipment.destination_port }}
           <span class="status">{{ shipment.status }}</span>
         </li>
         {% endfor %}
@@ -62,7 +70,10 @@
       <ul class="list">
         {% for alert in alerts %}
         <li>
-          <strong>{{ alert.shipment_id }}</strong> · {{ alert.supplier }}
+          <strong>
+            <a class="inline-link" href="#shipment-details" data-shipment-id="{{ alert.shipment_id }}">{{ alert.shipment_id }}</a>
+          </strong>
+          · <a class="inline-link" href="#supplier-details" data-supplier-id="{{ alert.supplier_id }}">{{ alert.supplier }}</a>
           <div class="subtext">Origin: {{ alert.origin_country }} · {{ alert.risk_reason }}</div>
           <span class="badge">Severity {{ alert.severity }}</span>
         </li>
@@ -75,11 +86,14 @@
 
     <div class="card">
       <h2>Alternate Sourcing Suggestions</h2>
-      <p>Recommended suppliers to replace China-origin electronics.</p>
+      <p>Recommended suppliers to mitigate geopolitical risk exposure for electronics.</p>
       <ul class="list">
         {% for supplier in alternatives %}
         <li>
-          <strong>{{ supplier.name }}</strong> ({{ supplier.country }})
+          <strong>
+            <a class="inline-link" href="#supplier-details" data-supplier-id="{{ supplier.supplier_id }}">{{ supplier.name }}</a>
+          </strong>
+          ({{ supplier.country }})
           <div class="subtext">Lead time {{ supplier.lead_time_days }} days · Performance {{ supplier.performance_score }}</div>
         </li>
         {% endfor %}
@@ -91,14 +105,14 @@
     <div class="card">
       <h2>WMS/TMS Q&amp;A</h2>
       <form method="post" class="qa-form">
-        <label for="question">Ask about delays, supplier performance, or lead times (RAG on synthetic data)</label>
+        <label for="question">Ask about delays, supplier performance, or lead times </label>
         <div class="qa-input">
           <input type="text" id="question" name="question" value="{{ question }}" placeholder="Which supplier has the most delays?" />
           <button type="submit">Ask</button>
         </div>
       </form>
       {% if answer %}
-      <div class="answer">{{ answer }}</div>
+      <div class="answer linkify-ids">{{ answer }}</div>
       {% if sources %}
       <div class="sources">
         <span class="sources-label">Retrieved context:</span>
@@ -112,5 +126,97 @@
       {% endif %}
     </div>
   </section>
+
+  <section class="grid">
+    <div class="card" id="shipment-details">
+      <h2>Shipment Details</h2>
+      <div class="detail-panel" id="shipment-detail">
+        Click a shipment ID to see full routing, ETA, and status details.
+      </div>
+    </div>
+    <div class="card" id="supplier-details">
+      <h2>Supplier Details</h2>
+      <div class="detail-panel" id="supplier-detail">
+        Click a supplier to view performance, lead time, and category details.
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const shipments = {{ shipments | tojson }};
+    const suppliers = {{ suppliers | tojson }};
+
+    const shipmentsById = Object.fromEntries(shipments.map((item) => [item.shipment_id, item]));
+    const suppliersById = Object.fromEntries(suppliers.map((item) => [item.supplier_id, item]));
+
+    const shipmentDetail = document.getElementById("shipment-detail");
+    const supplierDetail = document.getElementById("supplier-detail");
+
+    const safeText = (value) => (value ? String(value) : "—");
+
+    function renderShipmentDetail(shipmentId) {
+      const shipment = shipmentsById[shipmentId];
+      if (!shipment) {
+        shipmentDetail.textContent = `No details found for ${shipmentId}.`;
+        return;
+      }
+      const supplier = suppliersById[shipment.supplier_id];
+      shipmentDetail.innerHTML = `
+        <div class="detail-title">${shipment.shipment_id}</div>
+        <div class="detail-row"><span>Supplier</span><span>${safeText(supplier?.name)} (${shipment.supplier_id})</span></div>
+        <div class="detail-row"><span>SKU</span><span>${safeText(shipment.sku)}</span></div>
+        <div class="detail-row"><span>Route</span><span>${safeText(shipment.origin_port)} → ${safeText(shipment.destination_port)}</span></div>
+        <div class="detail-row"><span>Planned ETA</span><span>${safeText(shipment.planned_eta)}</span></div>
+        <div class="detail-row"><span>Actual ETA</span><span>${safeText(shipment.actual_eta)}</span></div>
+        <div class="detail-row"><span>Status</span><span>${safeText(shipment.status)}</span></div>
+        <div class="detail-row"><span>Delay Reason</span><span>${safeText(shipment.delay_reason)}</span></div>
+      `;
+    }
+
+    function renderSupplierDetail(supplierId) {
+      const supplier = suppliersById[supplierId];
+      if (!supplier) {
+        supplierDetail.textContent = `No details found for ${supplierId}.`;
+        return;
+      }
+      supplierDetail.innerHTML = `
+        <div class="detail-title">${supplier.name} (${supplier.supplier_id})</div>
+        <div class="detail-row"><span>Country</span><span>${safeText(supplier.country)}</span></div>
+        <div class="detail-row"><span>Category</span><span>${safeText(supplier.category)}</span></div>
+        <div class="detail-row"><span>Lead Time</span><span>${safeText(supplier.lead_time_days)} days</span></div>
+        <div class="detail-row"><span>Performance Score</span><span>${safeText(supplier.performance_score)}</span></div>
+      `;
+    }
+
+    function linkifyIds(container) {
+      const idRegex = /\\b(SHP-\\d{4}|SUP-[A-Z]{3}-\\d{3})\\b/g;
+      container.innerHTML = container.innerHTML.replace(idRegex, (match) => {
+        if (shipmentsById[match]) {
+          return `<a class="inline-link" href="#shipment-details" data-shipment-id="${match}">${match}</a>`;
+        }
+        if (suppliersById[match]) {
+          return `<a class="inline-link" href="#supplier-details" data-supplier-id="${match}">${match}</a>`;
+        }
+        return match;
+      });
+    }
+
+    document.querySelectorAll(".linkify-ids").forEach(linkifyIds);
+
+    document.addEventListener("click", (event) => {
+      const shipmentLink = event.target.closest("[data-shipment-id]");
+      const supplierLink = event.target.closest("[data-supplier-id]");
+      if (shipmentLink) {
+        event.preventDefault();
+        renderShipmentDetail(shipmentLink.dataset.shipmentId);
+        shipmentDetail.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (supplierLink) {
+        event.preventDefault();
+        renderSupplierDetail(supplierLink.dataset.supplierId);
+        supplierDetail.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  </script>
 </body>
 </html>

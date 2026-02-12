@@ -1,13 +1,14 @@
 [
   {
     "id": "news-001",
-    "headline": "US announces expanded trade block on select China-origin electronics",
-    "region": "US-China",
+    "headline": "Trade block discussions intensify on select China-origin electronics",
+    "region": "Global",
     "impact": "tariff/block",
     "severity": 0.9,
     "affected_countries": ["China"],
-    "summary": "New restrictions increase tariffs and limit imports of specific electronics and components from China.",
-    "timestamp": "2025-02-10T08:30:00Z"
+    "summary": "Policy discussions highlight tighter controls and tariffs on electronics supply chains tied to China.",
+    "timestamp": "2025-02-10T08:30:00Z",
+    "source_url": "https://news.un.org/en/tags/trade"
   },
   {
     "id": "news-002",
@@ -16,7 +17,8 @@
     "impact": "route disruption",
     "severity": 0.7,
     "affected_countries": ["Egypt", "Yemen", "Saudi Arabia"],
-    "summary": "Ongoing security risks force carriers to reroute around the Cape, increasing lead times.",
-    "timestamp": "2025-02-09T14:10:00Z"
+    "summary": "Security concerns in the Red Sea force carriers to reroute around the Cape, adding transit time.",
+    "timestamp": "2025-02-09T14:10:00Z",
+    "source_url": "https://news.un.org/en/tags/red-sea"
   }
 ]
