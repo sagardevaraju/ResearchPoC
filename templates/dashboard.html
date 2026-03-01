@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GeoSupply Copilot Dashboard</title>
   <link rel="stylesheet" href="/static/styles.css" />
+  <script>
+    // Apply saved theme before paint to avoid flash
+    if (localStorage.getItem('theme') === 'dark') {
+      document.documentElement.classList.add('pre-dark');
+    }
+  </script>
+  <style>
+    html.pre-dark body { background: #0f172a; }
+  </style>
 </head>
 <body>
   <header class="app-header">
@@ -12,25 +21,42 @@
       <h1>GeoSupply Copilot</h1>
       <p>Prototype dashboard for geopolitical risk + WMS/TMS intelligence</p>
     </div>
-    <div class="timestamp">Updated {{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <a href="/?refresh_news=true" class="refresh-btn">Refresh Live News</a>
+      <button class="theme-toggle" id="theme-toggle">Dark Mode</button>
+      <div class="timestamp">Updated {{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+    </div>
   </header>
 
   <section class="grid">
     <div class="card">
-      <h2>Trade Block Scenario</h2>
-      <p class="headline">{{ scenario.title }}</p>
-      <p>{{ scenario.summary }}</p>
-      {% if scenario.source_url %}
-      <p class="subtext">
-        Source: <a class="inline-link" href="{{ scenario.source_url }}" target="_blank" rel="noopener">{{ scenario.source_url }}</a>
-      </p>
-      {% endif %}
-      <div class="tag-row">
-        <span class="tag">Severity {{ scenario.severity }}</span>
-        {% for country in scenario.affected_countries %}
-        <span class="tag danger">{{ country }}</span>
-        {% endfor %}
+      <h2>Impact News</h2>
+      {% if top_news %}
+      <div class="scroll-body">
+        <ul class="list">
+          {% for news_item in top_news %}
+          <li>
+            <strong class="headline">{{ news_item.headline }}</strong>
+            <div class="subtext">{{ news_item.summary }}</div>
+            {% if news_item.source_url %}
+            <p class="subtext" style="margin-top: 4px;">
+              Source: <a class="inline-link" href="{{ news_item.source_url }}" target="_blank" rel="noopener">{{ news_item.region }} News</a>
+            </p>
+            {% endif %}
+            <div class="tag-row">
+              <span class="tag">Severity {{ news_item.severity }}</span>
+              <span class="tag">{{ news_item.impact }}</span>
+              {% for country in news_item.affected_countries %}
+              <span class="tag danger">{{ country }}</span>
+              {% endfor %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
       </div>
+      {% else %}
+      <p>No geopolitical impact news available.</p>
+      {% endif %}
     </div>
 
     <div class="card">
@@ -49,17 +75,19 @@
           <span class="metric-label">Delay Rate</span>
         </div>
       </div>
-      <ul class="list">
-        {% for shipment in shipments %}
-        <li>
-          <strong>
-            <a class="inline-link" href="#shipment-details" data-shipment-id="{{ shipment.shipment_id }}">{{ shipment.shipment_id }}</a>
-          </strong>
-          · {{ shipment.origin_port }} → {{ shipment.destination_port }}
-          <span class="status">{{ shipment.status }}</span>
-        </li>
-        {% endfor %}
-      </ul>
+      <div class="scroll-body">
+        <ul class="list">
+          {% for shipment in shipments %}
+          <li>
+            <strong>
+              <a class="inline-link" href="#shipment-details" data-shipment-id="{{ shipment.shipment_id }}">{{ shipment.shipment_id }}</a>
+            </strong>
+            · {{ shipment.origin_port }} → {{ shipment.destination_port }}
+            <span class="status">{{ shipment.status }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
     </div>
   </section>
 
@@ -76,6 +104,7 @@
           · <a class="inline-link" href="#supplier-details" data-supplier-id="{{ alert.supplier_id }}">{{ alert.supplier }}</a>
           <div class="subtext">Origin: {{ alert.origin_country }} · {{ alert.risk_reason }}</div>
           <span class="badge">Severity {{ alert.severity }}</span>
+          <span class="badge {% if alert.impact_score >= 0.7 %}badge-high{% elif alert.impact_score >= 0.5 %}badge-medium{% else %}badge-low{% endif %}">Impact Score: {{ alert.impact_score }}</span>
         </li>
         {% endfor %}
       </ul>
@@ -105,9 +134,10 @@
     <div class="card">
       <h2>WMS/TMS Q&amp;A</h2>
       <form method="post" class="qa-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <label for="question">Ask about delays, supplier performance, or lead times </label>
         <div class="qa-input">
-          <input type="text" id="question" name="question" value="{{ question }}" placeholder="Which supplier has the most delays?" />
+          <input type="text" id="question" name="question" value="{{ question }}" placeholder="Which supplier has the most delays?" maxlength="500" />
           <button type="submit">Ask</button>
         </div>
       </form>
@@ -189,7 +219,7 @@
     }
 
     function linkifyIds(container) {
-      const idRegex = /\\b(SHP-\\d{4}|SUP-[A-Z]{3}-\\d{3})\\b/g;
+      const idRegex = /\b(SHP-\d{4}|SUP-[A-Z]{3}-\d{3})\b/g;
       container.innerHTML = container.innerHTML.replace(idRegex, (match) => {
         if (shipmentsById[match]) {
           return `<a class="inline-link" href="#shipment-details" data-shipment-id="${match}">${match}</a>`;
@@ -216,6 +246,25 @@
         renderSupplierDetail(supplierLink.dataset.supplierId);
         supplierDetail.scrollIntoView({ behavior: "smooth", block: "start" });
       }
+    });
+
+    // Dark mode toggle
+    const themeToggle = document.getElementById("theme-toggle");
+
+    function applyTheme(dark) {
+      document.body.classList.toggle("dark", dark);
+      themeToggle.textContent = dark ? "Light Mode" : "Dark Mode";
+    }
+
+    // Restore saved preference
+    const saved = localStorage.getItem("theme");
+    applyTheme(saved === "dark");
+    document.documentElement.classList.remove("pre-dark");
+
+    themeToggle.addEventListener("click", () => {
+      const isDark = !document.body.classList.contains("dark");
+      applyTheme(isDark);
+      localStorage.setItem("theme", isDark ? "dark" : "light");
     });
   </script>
 </body>

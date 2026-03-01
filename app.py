@@ -10,19 +10,37 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session
+from flask_wtf.csrf import CSRFProtect
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import math
+import feedparser
+from datetime import timedelta
+import hashlib
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(32))
+app.config['WTF_CSRF_TIME_LIMIT'] = None
+csrf = CSRFProtect(app)
 LOCAL_LLM_BASE_URL = os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:8085").rstrip("/")
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "mistral")
 LOCAL_LLM_TIMEOUT = float(os.getenv("LOCAL_LLM_TIMEOUT", "20"))
 _LLM_BOOTED = False
 _LLM_BOOT_ERROR = ""
+
+# Security headers
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = "default-src 'self' 'unsafe-inline'"
+    return response
 
 
 @dataclass
@@ -33,6 +51,7 @@ class RiskAlert:
     origin_country: str
     risk_reason: str
     severity: float
+    impact_score: float = 0.0
 
 
 def load_json(filename: str) -> List[Dict[str, Any]]:
@@ -67,11 +86,18 @@ def generate_risk_alerts(
     shipments: List[Dict[str, Any]],
     suppliers: Dict[str, Dict[str, Any]],
     scenario: Dict[str, Any],
+    performance: Dict[str, Dict[str, Any]] = None,
 ) -> List[RiskAlert]:
     alerts: List[RiskAlert] = []
     for shipment in shipments:
         supplier = suppliers[shipment["supplier_id"]]
         if supplier["country"] in scenario["affected_countries"]:
+            # Calculate impact score using mathematical formulation
+            perf_data = performance.get(shipment["supplier_id"]) if performance else None
+            impact_score = calculate_shipment_impact_score(
+                shipment, supplier, scenario["severity"], perf_data
+            )
+
             alerts.append(
                 RiskAlert(
                     shipment_id=shipment["shipment_id"],
@@ -80,6 +106,7 @@ def generate_risk_alerts(
                     origin_country=supplier["country"],
                     risk_reason="Trade block exposure for China-origin electronics.",
                     severity=scenario["severity"],
+                    impact_score=round(impact_score, 3),
                 )
             )
     return alerts
@@ -456,6 +483,204 @@ def render_llm_answer(llm_response: LlmResponse, suppliers: Dict[str, Dict[str, 
     return answer
 
 
+def calculate_shipment_impact_score(
+    shipment: Dict[str, Any],
+    supplier: Dict[str, Any],
+    geopolitical_severity: float,
+    performance_data: Dict[str, Any] = None
+) -> float:
+    """
+    Calculate shipment impact severity score using mathematical formulation.
+
+    Formula:
+    Impact Score = w1 * Geopolitical_Severity + w2 * Delay_Factor + w3 * Performance_Factor + w4 * Route_Risk
+
+    Where:
+    - Geopolitical_Severity: [0, 1] severity from news/scenario
+    - Delay_Factor: normalized delay days / expected lead time
+    - Performance_Factor: 1 - supplier_performance_score
+    - Route_Risk: calculated based on origin/destination risk mapping
+    - Weights (w1, w2, w3, w4): [0.4, 0.3, 0.2, 0.1] (sum to 1.0)
+
+    Returns:
+    - Impact score in range [0, 1] where higher = more severe impact
+    """
+    # Weight coefficients
+    w1, w2, w3, w4 = 0.4, 0.3, 0.2, 0.1
+
+    # 1. Geopolitical Severity (already normalized 0-1)
+    geo_severity = min(max(geopolitical_severity, 0.0), 1.0)
+
+    # 2. Delay Factor
+    delay_days = 0
+    if shipment.get("planned_eta") and shipment.get("actual_eta"):
+        try:
+            planned = datetime.strptime(shipment["planned_eta"], "%Y-%m-%d")
+            actual = datetime.strptime(shipment["actual_eta"], "%Y-%m-%d")
+            delay_days = max((actual - planned).days, 0)
+        except ValueError:
+            delay_days = 0
+
+    # Normalize delay by lead time (assume 30 days average if not available)
+    lead_time = supplier.get("lead_time_days", 30)
+    delay_factor = min(delay_days / lead_time, 1.0) if lead_time > 0 else 0.0
+
+    # 3. Performance Factor (inverse of performance score)
+    performance_score = supplier.get("performance_score", 0.8)
+    if performance_data:
+        on_time_rate = performance_data.get("on_time_rate", 0.9)
+        performance_score = (performance_score + on_time_rate) / 2
+    performance_factor = 1.0 - min(max(performance_score, 0.0), 1.0)
+
+    # 4. Route Risk Factor
+    high_risk_ports = {
+        "Shanghai", "Shenzhen", "Hong Kong", "Suez Canal",
+        "Port Said", "Aden", "Red Sea"
+    }
+    origin_port = shipment.get("origin_port", "")
+    destination_port = shipment.get("destination_port", "")
+
+    route_risk = 0.0
+    if origin_port in high_risk_ports:
+        route_risk += 0.5
+    if destination_port in high_risk_ports:
+        route_risk += 0.3
+    # Add distance complexity factor
+    if "China" in origin_port or "Asia" in origin_port:
+        if "Los Angeles" in destination_port or "Seattle" in destination_port:
+            route_risk += 0.2  # Trans-Pacific route complexity
+    route_risk = min(route_risk, 1.0)
+
+    # Calculate weighted impact score
+    impact_score = (
+        w1 * geo_severity +
+        w2 * delay_factor +
+        w3 * performance_factor +
+        w4 * route_risk
+    )
+
+    # Ensure final score is in [0, 1]
+    return min(max(impact_score, 0.0), 1.0)
+
+
+def scrape_live_geopolitical_news(max_articles: int = 10) -> List[Dict[str, Any]]:
+    """
+    Scrape live geopolitical news from RSS feeds.
+
+    Sources:
+    - UN News (Trade)
+    - BBC World News
+    - Reuters World News
+
+    Returns:
+    - List of news articles with standardized format
+    """
+    news_items = []
+
+    # RSS Feed URLs
+    feeds = [
+        {
+            "url": "https://news.un.org/feed/subscribe/en/news/topic/trade/feed/rss.xml",
+            "region": "Global",
+            "base_severity": 0.7
+        },
+        {
+            "url": "http://feeds.bbci.co.uk/news/world/rss.xml",
+            "region": "Global",
+            "base_severity": 0.6
+        },
+        {
+            "url": "https://www.reuters.com/rssfeed/worldNews",
+            "region": "Global",
+            "base_severity": 0.6
+        }
+    ]
+
+    # Keywords for geopolitical risk identification
+    risk_keywords = {
+        "trade block": 0.9,
+        "tariff": 0.8,
+        "sanctions": 0.9,
+        "embargo": 0.95,
+        "trade war": 0.85,
+        "supply chain": 0.7,
+        "customs": 0.6,
+        "export ban": 0.9,
+        "import restriction": 0.8,
+        "port closure": 0.85,
+        "shipping disruption": 0.75,
+        "red sea": 0.7,
+        "suez canal": 0.7,
+        "china": 0.6,
+        "taiwan": 0.7,
+        "ukraine": 0.65,
+        "russia": 0.65
+    }
+
+    country_patterns = [
+        "China", "USA", "United States", "Russia", "Ukraine", "Taiwan",
+        "India", "Vietnam", "Mexico", "Malaysia", "Egypt", "Yemen",
+        "Saudi Arabia", "Iran", "Israel", "Palestine"
+    ]
+
+    for feed_config in feeds:
+        try:
+            feed = feedparser.parse(feed_config["url"])
+
+            for entry in feed.entries[:max_articles // len(feeds)]:
+                title = entry.get("title", "")
+                summary = entry.get("summary", entry.get("description", ""))
+                link = entry.get("link", "")
+                published = entry.get("published", entry.get("updated", ""))
+
+                # Calculate severity based on keywords
+                severity = feed_config["base_severity"]
+                impact_type = "general"
+
+                text_to_analyze = (title + " " + summary).lower()
+
+                for keyword, weight in risk_keywords.items():
+                    if keyword in text_to_analyze:
+                        severity = max(severity, weight)
+                        if keyword in ["trade block", "embargo", "sanctions"]:
+                            impact_type = "tariff/block"
+                        elif keyword in ["port closure", "shipping disruption"]:
+                            impact_type = "route disruption"
+
+                # Extract affected countries
+                affected_countries = []
+                for country in country_patterns:
+                    if country in title or country in summary:
+                        affected_countries.append(country)
+
+                # Generate unique ID based on URL
+                news_id = f"news-live-{hashlib.md5(link.encode()).hexdigest()[:8]}"
+
+                news_item = {
+                    "id": news_id,
+                    "headline": title,
+                    "region": feed_config["region"],
+                    "impact": impact_type,
+                    "severity": round(severity, 2),
+                    "affected_countries": list(set(affected_countries)),
+                    "summary": summary[:300] + "..." if len(summary) > 300 else summary,
+                    "timestamp": published if published else datetime.utcnow().isoformat(),
+                    "source_url": link,
+                    "source": "live_feed"
+                }
+
+                news_items.append(news_item)
+
+        except Exception as e:
+            # Log error but continue with other feeds
+            print(f"Error fetching feed {feed_config['url']}: {str(e)}")
+            continue
+
+    # Sort by severity (highest first) and limit results
+    news_items.sort(key=lambda x: x["severity"], reverse=True)
+    return news_items[:max_articles]
+
+
 initialize_local_llm()
 
 
@@ -463,7 +688,19 @@ initialize_local_llm()
 def dashboard() -> str:
     if not _LLM_BOOTED:
         initialize_local_llm()
-    news = load_json("news.json")
+
+    # Check if user wants to refresh with live news
+    use_live_news = request.args.get("refresh_news", "false").lower() == "true"
+
+    if use_live_news:
+        # Scrape live news
+        live_news = scrape_live_geopolitical_news(max_articles=10)
+        # Merge with existing news (prioritize live)
+        static_news = load_json("news.json")
+        news = live_news + static_news
+    else:
+        news = load_json("news.json")
+
     suppliers = load_json("suppliers.json")
     shipments = load_json("shipments.json")
     performance = load_json("performance.json")
@@ -473,15 +710,54 @@ def dashboard() -> str:
     shipments_by_id = index_by(shipments, "shipment_id")
 
     scenario = build_trade_block_scenario(news)
-    alerts = generate_risk_alerts(shipments, suppliers_by_id, scenario)
+    alerts = generate_risk_alerts(shipments, suppliers_by_id, scenario, performance_by_id)
     alternatives = suggest_alternatives(suppliers, "electronics", scenario["affected_countries"])
     shipment_summary = summarize_shipments(shipments)
+
+    # Get top 5 high-severity news items for the Impact News section
+    top_news = sorted([n for n in news if n.get("severity", 0) >= 0.6],
+                     key=lambda x: x.get("severity", 0), reverse=True)[:5]
 
     answer = ""
     question = ""
     sources: List[str] = []
     if request.method == "POST":
-        question = request.form.get("question", "")
+        question = request.form.get("question", "").strip()
+
+        # Input validation
+        if len(question) > 500:
+            answer = "Question too long. Please limit your query to 500 characters."
+            return render_template(
+                "dashboard.html",
+                scenario=scenario,
+                alerts=alerts,
+                alternatives=alternatives,
+                shipments=shipments,
+                suppliers=suppliers,
+                shipment_summary=shipment_summary,
+                question=question,
+                answer=answer,
+                sources=sources,
+                generated_at=datetime.utcnow(),
+                top_news=top_news,
+            )
+
+        if not question:
+            answer = "Please enter a question."
+            return render_template(
+                "dashboard.html",
+                scenario=scenario,
+                alerts=alerts,
+                alternatives=alternatives,
+                shipments=shipments,
+                suppliers=suppliers,
+                shipment_summary=shipment_summary,
+                question=question,
+                answer=answer,
+                sources=sources,
+                generated_at=datetime.utcnow(),
+                top_news=top_news,
+            )
         documents = build_rag_corpus(suppliers, shipments, performance, news)
         retrieved = retrieve_context_for_question(question, documents, suppliers, news)
         try:
@@ -520,8 +796,12 @@ def dashboard() -> str:
         answer=answer,
         sources=sources,
         generated_at=datetime.utcnow(),
+        top_news=top_news,
     )
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    # SECURITY: Debug mode disabled in production
+    # Use environment variable to control debug mode
+    debug_mode = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "yes")
+    app.run(host="0.0.0.0", port=8000, debug=debug_mode)
